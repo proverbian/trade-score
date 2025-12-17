@@ -7,7 +7,7 @@ class TelegramPoster:
         self.token = token
         self.chat_id = chat_id
 
-    def post_scorecard(self, strength_per_tf: dict, pair_biases: dict, s_r_info: dict = None):
+    def post_scorecard(self, strength_per_tf: dict, pair_biases: dict, s_r_info: dict = None, pair_scores: dict = None, lot_size: float = 0.01):
         """
         strength_per_tf: { 'D1': {cur:score,...}, 'H4': {...}, 'H1': {...} }
         pair_biases: { 'EURUSD': 'SELL', 'GBPUSD': 'BUY', ... }
@@ -45,7 +45,15 @@ class TelegramPoster:
 
         lines.append("\nPAIRS:")
         for p, b in pair_biases.items():
-            lines.append(f"{p}: {b}")
+            score = None
+            if pair_scores and p in pair_scores:
+                try:
+                    score = float(pair_scores[p])
+                except Exception:
+                    score = None
+            size_str = f"Size: {lot_size}" if lot_size is not None else "Size: N/A"
+            score_str = f"Score: {score:+.2f}" if score is not None else "Score: N/A"
+            lines.append(f"{p}: {b}  {size_str}  {score_str}")
             if s_r_info and p in s_r_info:
                 res = s_r_info[p].get('resistances', [])
                 sup = s_r_info[p].get('supports', [])

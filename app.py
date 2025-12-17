@@ -86,8 +86,18 @@ def run():
             'tp_sell': price - atr * 1.5
         }
 
+    # compute aggregated weighted score per pair for display + decision
+    pair_total_scores = {}
+    for pair in pairs:
+        total = 0
+        for tf_key, w in weights.items():
+            total += pair_scores_all[tf_key][pair] * w
+        pair_total_scores[pair] = float(total)
+
+    lot_size = config.get('lot_size', 0.01)
+
     poster = telegram_bot.TelegramPoster(TG_TOKEN, CHAT_ID)
-    poster.post_scorecard(strength_per_tf, pair_biases, s_r_info)
+    poster.post_scorecard(strength_per_tf, pair_biases, s_r_info, pair_scores=pair_total_scores, lot_size=lot_size)
 
 if __name__ == "__main__":
     run()
