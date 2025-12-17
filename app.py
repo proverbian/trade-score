@@ -20,67 +20,68 @@ ema_short = config['ema_period']['short']
 ema_long = config['ema_period']['long']
 s_r_config = config['s_r']
 
-def fetch_alpha(pair, interval_str, period="60d"):
+def fetch_alpha(pair, interval_str, period="5d"):
     symbol = f"{pair[:3]}{pair[3:]}=X"
-    if interval_str == "60m":
-        interval = "60m"
-    elif interval_str == "240m":
-        interval = "1h"  # approximation for H4
-    elif interval_str == "1d":
-        interval = "1d"
-    else:
-        raise ValueError(f"Unsupported interval: {interval_str}")
+    interval = interval_str  # "5m" or "15m"
 
-    try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
-        if df.empty or len(df) < 50:  # Ensure enough data
-            raise RuntimeError(f"Insufficient data for {pair} {interval_str}")
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
-        return df
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch data for {pair}: {str(e)}")
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(period=period, interval=interval)
+    if df.empty or len(df) < 50:
+        raise RuntimeError(f"No data for {pair} {interval}")
+    return df[['Open','High','Low','Close','Volume']].dropna()
 
 def run():
-    strength_per_tf = {}
     pair_scores_all = {}
     s_r_info = {}
 
+    # 1️⃣ Compute intraday momentum
     for tf_key, interval in intervals.items():
         pair_scores = {}
         for pair in pairs:
-            df = fetch_alpha(pair, interval)
+            df = fetch_alpha(pair, interval, period="5d")
             score = scoring.pair_momentum_score(df, ema_short, ema_long)
             pair_scores[pair] = score
-        strength = scoring.build_currency_strength(pair_scores)
-        normalized = scoring.normalize_strength(strength)
-        strength_per_tf[tf_key] = normalized
         pair_scores_all[tf_key] = pair_scores
 
-    # Aggregate pair biases with weights
-    pair_total_scores = {}
+    # 2️⃣ Intraday bias (no D1/H4)
+    pair_biases = {}
     for pair in pairs:
         total = 0
         for tf_key, w in weights.items():
             total += pair_scores_all[tf_key][pair] * w
-        pair_total_scores[pair] = total
 
-    pair_biases = {pair: 'BUY' if score > 0 else 'SELL' if score < 0 else 'NEUTRAL' for pair, score in pair_total_scores.items()}
+        if total > 0.3:
+            pair_biases[pair] = 'BUY'
+        elif total < -0.3:
+            pair_biases[pair] = 'SELL'
+        else:
+            pair_biases[pair] = 'NEUTRAL'
 
-    # For S/R, use H1 data and calculate ATR for SL/TP
-    h1_interval = intervals['H1']
+    # 3️⃣ Intraday S/R + ATR (M15 only)
     for pair in pairs:
-        df = fetch_alpha(pair, h1_interval)
+        df = fetch_alpha(pair, intervals['M15'], period="2d")
         close = df['Close']
+
         highs, lows = s_r.find_swing_points(close, s_r_config['swing_window'])
-        res, sup = s_r.pick_zones(highs, lows, top_n=3)
-        # Calculate ATR for volatility-adjusted SL/TP
-        atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1] if len(df) > 14 else 0.001
-        current_price = close.iloc[-1]
-        s_r_info[pair] = {'resistances': res, 'supports': sup, 'atr': atr, 'current_price': current_price}
+        res, sup = s_r.pick_zones(highs, lows)
+
+        atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
+        price = close.iloc[-1]
+
+        # Tight TP/SL
+        s_r_info[pair] = {
+            'current_price': price,
+            'atr': atr,
+            'supports': sup,
+            'resistances': res,
+            'sl_buy': price - atr * 1.0,
+            'tp_buy': price + atr * 1.5,
+            'sl_sell': price + atr * 1.0,
+            'tp_sell': price - atr * 1.5
+        }
 
     poster = telegram_bot.TelegramPoster(TG_TOKEN, CHAT_ID)
-    poster.post_scorecard(strength_per_tf, pair_biases, s_r_info)
+    poster.post_scorecard(pair_scores_all, pair_biases, s_r_info)
 
 if __name__ == "__main__":
     run()

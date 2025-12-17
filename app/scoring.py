@@ -5,24 +5,23 @@ import numpy as np
 def ema(series: pd.Series, span: int):
     return series.ewm(span=span, adjust=False).mean()
 
-def pair_momentum_score(df: pd.DataFrame, short=10, long=50) -> float:
-    """
-    Simple momentum: sign of (shortEMA - longEMA) for last close; magnitude scaled to %.
-    Returns a float in roughly [-1, +1]
-    """
+def pair_momentum_score(df: pd.DataFrame, short=5, long=20) -> float:
     close = df['Close']
     e_short = ema(close, short)
     e_long = ema(close, long)
+
     diff = e_short - e_long
     val = diff.iloc[-1]
-    # normalize by ATR-like range to avoid blowups
+
     rng = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
     if rng == 0 or np.isnan(rng):
         return 0.0
-    score = float(val / rng)
-    # clamp
-    score = max(min(score, 3.0), -3.0)
-    return score
+
+    score = val / rng
+
+    # Intraday clamp (tight)
+    score = max(min(score, 1.5), -1.5)
+    return float(score)
 
 def build_currency_strength(pair_scores: dict):
     """

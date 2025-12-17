@@ -24,7 +24,7 @@ class TelegramPoster:
         else:
             status = "Overnight/Thin liquidity (22:00-00:00 UTC) - Avoid major moves"
 
-        lines = [f"==WAGFOREX SCORECARD==\nMarket Status: {status} (UTC {utc_now.strftime('%H:%M')})"]
+        lines = [f"==FOREX SCORECARD==\nMarket Status: {status} (UTC {utc_now.strftime('%H:%M')})"]
         # print per currency per timeframe like in screenshot
         currencies = sorted({c for tf in strength_per_tf.values() for c in tf.keys()})
         for cur in currencies:

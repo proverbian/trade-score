@@ -9,21 +9,19 @@ pairs:
   - EURAUD
 
 intervals:
-  H1: "60m"
-  H4: "240m"
-  D1: "1d"
+  M15: "15m"
+  M5: "5m"
 
 weights:
-  D1: 0.6
-  H4: 0.3
-  H1: 0.1
+  M15: 0.7
+  M5: 0.3
 
 ema_period:
-  short: 10
-  long: 50
+  short: 5
+  long: 20
 
 s_r:
   lookback_bars: 200
-  swing_window: 5
+  swing_window: 2
 
 lot_size: 0.01  # Default micro lot; adjust based on your account
