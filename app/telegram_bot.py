@@ -25,12 +25,19 @@ class TelegramPoster:
             status = "Overnight/Thin liquidity (22:00-00:00 UTC) - Avoid major moves"
 
         lines = [f"==FOREX SCORECARD==\nMarket Status: {status} (UTC {utc_now.strftime('%H:%M')})"]
-        # print per currency per timeframe like in screenshot
+        # print per currency per timeframe using the provided timeframes
+        tf_keys = list(strength_per_tf.keys()) if strength_per_tf else []
+
+        def pip_size(pair: str) -> float:
+            # JPY pairs typically have 2 decimal places, others 4
+            if pair[3:] == 'JPY' or pair.endswith('JPY'):
+                return 0.01
+            return 0.0001
         currencies = sorted({c for tf in strength_per_tf.values() for c in tf.keys()})
         for cur in currencies:
             row = f"{cur}: "
             parts = []
-            for tf in ['D1','H4','H1']:
+            for tf in tf_keys:
                 val = strength_per_tf.get(tf, {}).get(cur, 0)
                 parts.append(f"{tf}: {val:+d}")
             row += " | ".join(parts)
@@ -55,9 +62,34 @@ class TelegramPoster:
                     sl = order_at + atr * 1.5
                 else:
                     order_at = tp = sl = None
-                lines.append(f"ORDER AT: {order_at:.4f}" if order_at else "ORDER AT: N/A")
-                lines.append(f"TP: {tp:.4f}" if tp else "TP: N/A")
-                lines.append(f"SL: {sl:.4f}" if sl else "SL: N/A")
+                # show order/TP/SL with pip distances relative to current price
+                psize = pip_size(p)
+                if order_at:
+                    try:
+                        order_pips = abs(order_at - current_price) / psize if current_price else None
+                    except Exception:
+                        order_pips = None
+                    lines.append(f"ORDER AT: {order_at:.4f} ({order_pips:.1f} pips)" if order_pips is not None else f"ORDER AT: {order_at:.4f}")
+                else:
+                    lines.append("ORDER AT: N/A")
+
+                if tp:
+                    try:
+                        tp_pips = abs(tp - current_price) / psize if current_price else None
+                    except Exception:
+                        tp_pips = None
+                    lines.append(f"TP: {tp:.4f} ({tp_pips:.1f} pips)" if tp_pips is not None else f"TP: {tp:.4f}")
+                else:
+                    lines.append("TP: N/A")
+
+                if sl:
+                    try:
+                        sl_pips = abs(sl - current_price) / psize if current_price else None
+                    except Exception:
+                        sl_pips = None
+                    lines.append(f"SL: {sl:.4f} ({sl_pips:.1f} pips)" if sl_pips is not None else f"SL: {sl:.4f}")
+                else:
+                    lines.append("SL: N/A")
                 lines.append("SUPPORT/RESIST:")
                 lines.append(f"  R: {', '.join(f'{r:.4f}' for r in res)}")
                 lines.append(f"  S: {', '.join(f'{s:.4f}' for s in sup)}")

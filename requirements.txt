@@ -4,4 +4,4 @@ python-dotenv
 numpy
 pyyaml
 yfinance
-yfinance
+# end

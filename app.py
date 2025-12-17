@@ -33,6 +33,7 @@ def fetch_alpha(pair, interval_str, period="5d"):
 def run():
     pair_scores_all = {}
     s_r_info = {}
+    strength_per_tf = {}
 
     # 1️⃣ Compute intraday momentum
     for tf_key, interval in intervals.items():
@@ -41,7 +42,12 @@ def run():
             df = fetch_alpha(pair, interval, period="5d")
             score = scoring.pair_momentum_score(df, ema_short, ema_long)
             pair_scores[pair] = score
+        # store raw pair scores for trading decision
         pair_scores_all[tf_key] = pair_scores
+        # compute currency strength per timeframe for messaging
+        strength = scoring.build_currency_strength(pair_scores)
+        normalized = scoring.normalize_strength(strength)
+        strength_per_tf[tf_key] = normalized
 
     # 2️⃣ Intraday bias (no D1/H4)
     pair_biases = {}
@@ -81,7 +87,7 @@ def run():
         }
 
     poster = telegram_bot.TelegramPoster(TG_TOKEN, CHAT_ID)
-    poster.post_scorecard(pair_scores_all, pair_biases, s_r_info)
+    poster.post_scorecard(strength_per_tf, pair_biases, s_r_info)
 
 if __name__ == "__main__":
     run()
