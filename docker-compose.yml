@@ -1,0 +1,9 @@
+version: "3"
+
+services:
+  wagforex:
+    build: .
+    container_name: wagforex
+    env_file:
+      - .env
+    restart: "no"

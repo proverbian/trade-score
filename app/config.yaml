@@ -1,0 +1,29 @@
+pairs:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+  - AUDUSD
+  - NZDUSD
+  - USDCAD
+  - GBPJPY
+  - EURAUD
+
+intervals:
+  H1: "60m"
+  H4: "240m"
+  D1: "1d"
+
+weights:
+  D1: 0.6
+  H4: 0.3
+  H1: 0.1
+
+ema_period:
+  short: 10
+  long: 50
+
+s_r:
+  lookback_bars: 200
+  swing_window: 5
+
+lot_size: 0.01  # Default micro lot; adjust based on your account
