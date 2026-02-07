@@ -8,6 +8,51 @@ class TelegramPoster:
         self.token = token
         self.chat_id = chat_id
 
+    def send_text(self, text: str, dry_run: bool = False) -> str:
+        """Send arbitrary text to Telegram (chunked), or return it in dry_run."""
+        msg = (text or "").strip()
+        if dry_run:
+            return msg
+
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+
+        def _post_text(ch: str):
+            resp = requests.post(url, data={"chat_id": self.chat_id, "text": ch}, timeout=30)
+            if not resp.ok:
+                snippet = (resp.text or "").strip().replace("\n", " ")[:300]
+                raise RuntimeError(f"Telegram send failed: HTTP {resp.status_code} | {snippet}")
+
+        # Telegram hard limit is 4096 chars; keep a safety margin.
+        max_len = 3800
+        if len(msg) <= max_len:
+            _post_text(msg)
+            return msg
+
+        # Split by lines to preserve readability.
+        lines_with_nl = msg.splitlines(True)
+        chunks: list[str] = []
+        cur = ""
+        for ln in lines_with_nl:
+            if len(cur) + len(ln) > max_len:
+                if cur:
+                    chunks.append(cur)
+                    cur = ""
+                if len(ln) > max_len:
+                    for i in range(0, len(ln), max_len):
+                        chunks.append(ln[i:i + max_len])
+                else:
+                    cur = ln
+            else:
+                cur += ln
+        if cur:
+            chunks.append(cur)
+
+        total = len(chunks)
+        for i, ch in enumerate(chunks, start=1):
+            prefix = f"(part {i}/{total})\n" if total > 1 else ""
+            _post_text(prefix + ch)
+        return msg
+
     def post_scorecard(
         self,
         strength_per_tf: dict,
@@ -491,44 +536,4 @@ class TelegramPoster:
         # Remove the old S/R section
 
         msg = "\n".join(lines)
-        if dry_run:
-            return msg
-
-        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-
-        def _post_text(text: str):
-            resp = requests.post(url, data={"chat_id": self.chat_id, "text": text}, timeout=30)
-            if not resp.ok:
-                snippet = (resp.text or "").strip().replace("\n", " ")[:300]
-                raise RuntimeError(f"Telegram send failed: HTTP {resp.status_code} | {snippet}")
-
-        # Telegram hard limit is 4096 chars; keep a safety margin.
-        max_len = 3800
-        if len(msg) <= max_len:
-            _post_text(msg)
-            return msg
-
-        # Split by lines to preserve readability.
-        lines_with_nl = msg.splitlines(True)
-        chunks: list[str] = []
-        cur = ""
-        for ln in lines_with_nl:
-            if len(cur) + len(ln) > max_len:
-                if cur:
-                    chunks.append(cur)
-                    cur = ""
-                if len(ln) > max_len:
-                    for i in range(0, len(ln), max_len):
-                        chunks.append(ln[i:i + max_len])
-                else:
-                    cur = ln
-            else:
-                cur += ln
-        if cur:
-            chunks.append(cur)
-
-        total = len(chunks)
-        for i, ch in enumerate(chunks, start=1):
-            prefix = f"(part {i}/{total})\n" if total > 1 else ""
-            _post_text(prefix + ch)
-        return msg
+        return self.send_text(msg, dry_run=dry_run)
