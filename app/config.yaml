@@ -49,6 +49,11 @@ rr: 3.0
 # Local time display for backtest sheets (fixed offset, no DST)
 local_utc_offset_hours: -5
 
+# Preferred local timezone (DST-aware) for Telegram + reports.
+# Common Canada choices:
+#   America/Toronto, America/Montreal, America/Vancouver, America/Edmonton, America/Winnipeg, America/Halifax
+local_timezone: "America/Toronto"
+
 # Optional: override Yahoo Finance tickers per "pair".
 # Yahoo does not reliably provide spot XAUUSD as XAUUSD=X; GC=F (Gold futures) is commonly available.
 yfinance_symbols:

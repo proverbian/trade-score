@@ -1,9 +1,18 @@
+name: rukus
 version: "3"
 
 services:
-  wagforex:
+  rukus_forex:
     build: .
-    container_name: wagforex
+    container_name: rukus_forex
     env_file:
       - .env
     restart: "no"
+
+  rukus:
+    build: .
+    container_name: rukus
+    env_file:
+      - .env
+    command: ["python", "telegram_responder.py"]
+    restart: unless-stopped

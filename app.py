@@ -11,6 +11,18 @@ TG_TOKEN = os.getenv("TG_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 DRY_RUN = os.getenv("DRY_RUN", "0").strip().lower() in {"1", "true", "yes", "y"}
 
+
+def _env_bool(name: str) -> bool | None:
+    v = os.getenv(name)
+    if v is None:
+        return None
+    v = v.strip().lower()
+    if v in {"1", "true", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
+
 with open('app/config.yaml') as f:
     config = yaml.safe_load(f)
 
@@ -279,6 +291,16 @@ def run():
     account_balance_usd = config.get('account_balance_usd', None)
 
     poster = telegram_bot.TelegramPoster(TG_TOKEN, CHAT_ID)
+
+    show_currency_strength = bool(config.get('show_currency_strength', False))
+    show_neutral_pairs = bool(config.get('show_neutral_pairs', False))
+    sc_override = _env_bool("SHOW_CURRENCY_STRENGTH")
+    sn_override = _env_bool("SHOW_NEUTRAL_PAIRS")
+    if sc_override is not None:
+        show_currency_strength = sc_override
+    if sn_override is not None:
+        show_neutral_pairs = sn_override
+
     msg = poster.post_scorecard(
         strength_per_tf,
         pair_biases,
@@ -289,8 +311,9 @@ def run():
         account_balance_usd=account_balance_usd,
         dry_run=DRY_RUN,
         local_utc_offset_hours=config.get('local_utc_offset_hours', None),
-        show_currency_strength=bool(config.get('show_currency_strength', False)),
-        show_neutral_pairs=bool(config.get('show_neutral_pairs', False)),
+        local_timezone=config.get('local_timezone', None),
+        show_currency_strength=show_currency_strength,
+        show_neutral_pairs=show_neutral_pairs,
     )
     if DRY_RUN:
         print(msg)

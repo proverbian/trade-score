@@ -19,6 +19,7 @@ class TelegramPoster:
         dry_run: bool = False,
         account_balance_usd: float | None = None,
         local_utc_offset_hours: float | None = None,
+        local_timezone: str | None = None,
         show_currency_strength: bool = True,
         show_neutral_pairs: bool = True,
     ) -> str:
@@ -31,14 +32,23 @@ class TelegramPoster:
         ny_tz = ZoneInfo("America/New_York")
         ny_now = utc_now.astimezone(ny_tz)
 
-        # Optional fixed-offset local time (for users comparing to chart time)
+        # Optional user local time (prefer TZ database name for DST correctness).
         local_tz = None
         local_tz_label = None
+        if local_timezone:
+            try:
+                local_tz = ZoneInfo(str(local_timezone).strip())
+                local_tz_label = str(local_timezone).strip()
+            except Exception:
+                local_tz = None
+                local_tz_label = None
         if local_utc_offset_hours is not None:
             try:
                 off = float(local_utc_offset_hours)
-                local_tz = timezone(timedelta(hours=off))
-                local_tz_label = f"UTC{int(off):+d}" if float(off).is_integer() else f"UTC{off:+g}"
+                # Only use fixed offset if no named timezone was provided.
+                if local_tz is None:
+                    local_tz = timezone(timedelta(hours=off))
+                    local_tz_label = f"UTC{int(off):+d}" if float(off).is_integer() else f"UTC{off:+g}"
             except Exception:
                 local_tz = None
                 local_tz_label = None
@@ -70,6 +80,52 @@ class TelegramPoster:
                 return base + f" ({d_loc.strftime('%Y-%m-%d %H:%M')} {local_tz_label})"
             except Exception:
                 return base
+
+        def _is_fx_pair(sym: str) -> bool:
+            sym = str(sym or '').strip().upper()
+            # Crypto trades 24/7; do not apply FX weekend closure messaging.
+            if sym in {'BTCUSD'}:
+                return False
+            # crude but effective for this project: 6-letter FX pairs
+            if len(sym) == 6 and sym.isalpha():
+                return True
+            # treat XAUUSD as FX-like session behavior
+            if sym == 'XAUUSD':
+                return True
+            return False
+
+        def _is_crypto(sym: str) -> bool:
+            sym = str(sym or '').strip().upper()
+            return sym in {'BTCUSD'}
+
+        def _fx_market_open(now_ny: datetime) -> bool:
+            """Approx FX hours in NY time: open Sun 5pm, close Fri 5pm."""
+            wd = now_ny.weekday()  # Mon=0 ... Sun=6
+            # Saturday closed
+            if wd == 5:
+                return False
+            # Sunday before 5pm closed
+            if wd == 6 and now_ny.hour < 17:
+                return False
+            # Friday after 5pm closed
+            if wd == 4 and now_ny.hour >= 17:
+                return False
+            return True
+
+        def _next_fx_open(now_ny: datetime) -> datetime:
+            """Return the next FX open time in NY timezone."""
+            wd = now_ny.weekday()  # Mon=0 ... Sun=6
+            # If Sunday before 5pm, next open is today 5pm.
+            if wd == 6 and now_ny.hour < 17:
+                return now_ny.replace(hour=17, minute=0, second=0, microsecond=0)
+            # Otherwise, next open is Sunday 5pm of the upcoming week.
+            # Compute days until Sunday.
+            days_until_sun = (6 - wd) % 7
+            target = (now_ny + timedelta(days=days_until_sun)).replace(hour=17, minute=0, second=0, microsecond=0)
+            # If we're already past this Sunday's 5pm (e.g., Sunday after open), move to next week.
+            if target <= now_ny:
+                target = target + timedelta(days=7)
+            return target
 
         def _fmt_hm(dt: datetime) -> str:
             return dt.strftime('%H:%M')
@@ -116,35 +172,66 @@ class TelegramPoster:
             'New York': (8, 0, 16, 0),  # 8:00 AM – 4:00 PM
         }
 
-        active_sessions = []
-        for name, (sh, sm, eh, em) in session_defs.items():
-            is_active, s_dt, e_dt = _session_window(ny_now, sh, sm, eh, em)
-            if is_active:
-                closes_in = e_dt - ny_now
-                active_sessions.append((name, closes_in))
+        fx_open = _fx_market_open(ny_now)
+        local_hm = None
+        try:
+            if local_tz is not None:
+                local_hm = utc_now.astimezone(local_tz).strftime('%H:%M')
+        except Exception:
+            local_hm = None
 
-        if not active_sessions:
-            session_line = f"Sessions: None (UTC {utc_now.strftime('%H:%M')}, NY {_fmt_hm(ny_now)})"
-            status = "Thin liquidity / rollover period"
+        if not fx_open:
+            # Override sessions when the FX market is closed (weekend close).
+            bits = [f"UTC {utc_now.strftime('%H:%M')}", f"NY {_fmt_hm(ny_now)}"]
+            if local_hm and local_tz_label:
+                bits.append(f"Local {local_hm} {local_tz_label}")
+            session_line = "CLOSED MARKET (FX weekend close) - " + " | ".join(bits)
+            status = "CLOSED MARKET"
+            try:
+                nxt = _next_fx_open(ny_now)
+                lines_next = f"Next open: {nxt.strftime('%a %H:%M')} NY (in {_fmt_countdown(nxt - ny_now)})"
+            except Exception:
+                lines_next = None
         else:
-            # Example desired format: Sessions: Asia (UTC 00:04, closing in: 4h)
-            parts = []
-            for name, closes_in in active_sessions:
-                parts.append(f"{name} (closing in: {_fmt_countdown(closes_in)})")
-            session_line = f"Sessions: {', '.join(parts)} (UTC {utc_now.strftime('%H:%M')}, NY {_fmt_hm(ny_now)})"
-            if len(active_sessions) == 1:
-                status = f"{active_sessions[0][0]} session"
+            active_sessions = []
+            for name, (sh, sm, eh, em) in session_defs.items():
+                is_active, s_dt, e_dt = _session_window(ny_now, sh, sm, eh, em)
+                if is_active:
+                    closes_in = e_dt - ny_now
+                    active_sessions.append((name, closes_in))
+
+            if not active_sessions:
+                bits = [f"UTC {utc_now.strftime('%H:%M')}", f"NY {_fmt_hm(ny_now)}"]
+                if local_hm and local_tz_label:
+                    bits.append(f"Local {local_hm} {local_tz_label}")
+                session_line = "Sessions: None (" + ", ".join(bits) + ")"
+                status = "Thin liquidity / rollover period"
             else:
-                status = "Overlap: " + " + ".join([s[0] for s in active_sessions])
+                parts = []
+                for name, closes_in in active_sessions:
+                    parts.append(f"{name} (closing in: {_fmt_countdown(closes_in)})")
+                bits = [f"UTC {utc_now.strftime('%H:%M')}", f"NY {_fmt_hm(ny_now)}"]
+                if local_hm and local_tz_label:
+                    bits.append(f"Local {local_hm} {local_tz_label}")
+                session_line = f"Sessions: {', '.join(parts)} (" + ", ".join(bits) + ")"
+                if len(active_sessions) == 1:
+                    status = f"{active_sessions[0][0]} session"
+                else:
+                    status = "Overlap: " + " + ".join([s[0] for s in active_sessions])
+            lines_next = None
 
         lines = [
             "==FOREX SCORECARD==",
+            "",
             f"Generated: {utc_now.strftime('%Y-%m-%d %H:%M:%S')} UTC",
             session_line,
             f"Market Status: {status}",
         ]
 
-        if local_tz is not None:
+        if (not fx_open) and 'lines_next' in locals() and lines_next:
+            lines.append(lines_next)
+
+        if local_tz is not None and local_tz_label:
             try:
                 lines.append(f"Local time: {utc_now.astimezone(local_tz).strftime('%Y-%m-%d %H:%M:%S')} {local_tz_label}")
             except Exception:
@@ -271,6 +358,23 @@ class TelegramPoster:
                         parts.append(f"H1 close {fmt_price(p, price_h1)}")
                     if parts:
                         lines.append("Price refs: " + " | ".join(parts))
+
+                # Explain stuck prices: show age of last M5 candle and whether FX market is closed.
+                try:
+                    if m5_last_time is not None:
+                        m5_dt = _to_dt(m5_last_time)
+                        if m5_dt is not None:
+                            age_min = (utc_now - m5_dt.astimezone(timezone.utc)).total_seconds() / 60.0
+                            if age_min >= 0:
+                                lines.append(f"Data age: {age_min:.0f} min since last M5 candle")
+                                if _is_fx_pair(p) and (not fx_open):
+                                    lines.append("Market note: FX market is CLOSED (weekend/after Fri close). Price will not update until Sunday open.")
+                                elif _is_crypto(p) and age_min > 30:
+                                    lines.append("Market note: Crypto trades 24/7; if this looks stuck, it's likely a delayed/stale yfinance feed.")
+                                elif age_min > 30:
+                                    lines.append("Market note: Data looks delayed/stale (yfinance can lag on intraday).")
+                except Exception:
+                    pass
                 if h1_last_time or m5_last_time:
                     h1_s = _fmt_dt_utc_and_local(h1_last_time) if h1_last_time is not None else "N/A"
                     m5_s = _fmt_dt_utc_and_local(m5_last_time) if m5_last_time is not None else "N/A"
