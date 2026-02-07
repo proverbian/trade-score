@@ -157,6 +157,7 @@ def compute_scorecard_data(cfg: dict) -> dict:
         rr = 3.0
 
     special_entries = {"XAUUSD", "BTCUSD"}
+    special_tp_mode = str(cfg.get('special_tp_mode', 'rr') or 'rr').strip().lower()
     for pair in pairs:
         bias = pair_biases.get(pair, 'NEUTRAL')
 
@@ -228,10 +229,16 @@ def compute_scorecard_data(cfg: dict) -> dict:
                     retest_time = ret.get('retest_time')
                     if bias_for_setup == 'BUY':
                         sl = entry - 1.0 * a
-                        tp = float(res[0]) if res and float(res[0]) > entry else (entry + rr * a)
+                        if pair in special_entries and special_tp_mode == 'rr':
+                            tp = entry + rr * a
+                        else:
+                            tp = float(res[0]) if res and float(res[0]) > entry else (entry + rr * a)
                     else:
                         sl = entry + 1.0 * a
-                        tp = float(sup[0]) if sup and float(sup[0]) < entry else (entry - rr * a)
+                        if pair in special_entries and special_tp_mode == 'rr':
+                            tp = entry - rr * a
+                        else:
+                            tp = float(sup[0]) if sup and float(sup[0]) < entry else (entry - rr * a)
 
                     why = f"H1 breakout @ {level:.5f}, then {ret.get('note','M5 retest')} (time {retest_time})."
                     entry_ideas = [{

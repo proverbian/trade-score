@@ -46,6 +46,10 @@ account_balance_usd: 104
 # Risk:Reward settings (used for TP display/backtest defaults)
 rr: 3.0
 
+# For BTCUSD/XAUUSD, S/R-based targets can be extremely far away. Default to RR*ATR targets.
+# Options: 'rr' (default) or 'sr'
+special_tp_mode: rr
+
 # Local time display for backtest sheets (fixed offset, no DST)
 local_utc_offset_hours: -5
 

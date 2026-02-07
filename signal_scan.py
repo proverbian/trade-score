@@ -59,7 +59,7 @@ def _fmt_dt_local(utc_dt: datetime, tz_name: str | None) -> str:
         return utc_dt.strftime("%Y-%m-%d %H:%M:%S") + " UTC"
 
 
-def _build_signal_message(data: dict, cfg: dict) -> str:
+def _build_signal_message(data: dict, cfg: dict) -> tuple[str, str]:
     utc_now = datetime.now(timezone.utc)
     tz_name = cfg.get("local_timezone")
 
@@ -70,6 +70,8 @@ def _build_signal_message(data: dict, cfg: dict) -> str:
     s_r_info: dict = data.get("s_r_info") or {}
 
     # Entries-only: include any pair with a confirmed entry idea.
+    # We also build a stable fingerprint so we don't re-send the same entry if only SL/TP moves.
+    entry_fps: list[str] = []
     entry_lines: list[str] = []
     for p in (cfg.get("pairs") or []):
         p = str(p or "").strip().upper()
@@ -98,6 +100,7 @@ def _build_signal_message(data: dict, cfg: dict) -> str:
         sl = idea.get("sl")
         tp = idea.get("tp")
         why = idea.get("why")
+        retest_time = idea.get("retest_time")
         b = str(pair_biases.get(p, "")).upper() or "N/A"
         side = direction if direction in {"BUY", "SELL"} else b
 
@@ -121,8 +124,18 @@ def _build_signal_message(data: dict, cfg: dict) -> str:
             entry_lines.append(f"  Why: {why}")
         entry_lines.append("")
 
+        # Fingerprint: pair + side + rounded entry + retest time (to minute)
+        try:
+            ent_fp = float(entry) if entry is not None else None
+        except Exception:
+            ent_fp = None
+        ent_fp_s = entry_s
+        rt = _to_dt(retest_time)
+        rt_s = rt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ") if rt is not None else "NA"
+        entry_fps.append(f"{p}|{side}|{ent_fp_s}|{rt_s}")
+
     if not entry_lines:
-        return ""
+        return "", ""
 
     lines: list[str] = []
     lines.append("==KOHIX SIGNALS==")
@@ -135,15 +148,19 @@ def _build_signal_message(data: dict, cfg: dict) -> str:
         entry_lines.pop()
     lines.extend(entry_lines)
 
-    return "\n".join(lines).strip()
+    # Fingerprint used for dedup.
+    # We do NOT include SL/TP in the fingerprint on purpose.
+    fp_payload = "\n".join(sorted(set(entry_fps))).strip()
+    fp = hashlib.sha256(fp_payload.encode("utf-8")).hexdigest() if fp_payload else ""
+    return "\n".join(lines).strip(), fp
 
 
-def _should_send(message: str, cache_path: str) -> bool:
+def _should_send(message: str, cache_path: str, fingerprint: str | None = None) -> bool:
     """Avoid spamming: don't send if message is empty or unchanged since last send."""
     if not message.strip():
         return False
 
-    h = hashlib.sha256(message.encode("utf-8")).hexdigest()
+    h = (fingerprint or "").strip() or hashlib.sha256(message.encode("utf-8")).hexdigest()
     try:
         if os.path.exists(cache_path):
             prev = (open(cache_path, "r", encoding="utf-8").read() or "").strip()
@@ -192,10 +209,10 @@ def main() -> int:
         return 2
 
     data = wag_app_main.compute_scorecard_data(cfg)
-    msg = _build_signal_message(data, cfg)
+    msg, fp = _build_signal_message(data, cfg)
 
     cache_path = os.path.join(os.path.dirname(__file__), ".last_signal_hash.txt")
-    if (not always_send) and (not _should_send(msg, cache_path=cache_path)):
+    if (not always_send) and (not _should_send(msg, cache_path=cache_path, fingerprint=fp)):
         # Silent success for cron jobs.
         return 0
 
