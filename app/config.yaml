@@ -16,6 +16,18 @@ weights:
   M15: 0.7
   M5: 0.3
 
+# MarketMilk-style strength settings (optional)
+# strength_lookback_bars:
+#   M15: 96   # ~1 day on 15m bars
+#   M5: 288   # ~1 day on 5m bars
+#
+# gap_threshold: 2.0  # neutral band for the weighted strength-gap score
+
+# Optional: trade only "extremes" (highest-strength currencies vs lowest-strength currencies)
+# This reduces signals but can improve quality.
+extremes_filter: true
+extremes_top_n: 1   # base must be in top N and quote in bottom N (for BUY); reverse for SELL
+
 ema_period:
   short: 5
   long: 20
@@ -25,3 +37,12 @@ s_r:
   swing_window: 2
 
 lot_size: 0.01  # Default micro lot; adjust based on your account
+
+# Account / budget (used for informational risk display)
+account_balance_usd: 104
+
+# Risk:Reward settings (used for TP display/backtest defaults)
+rr: 3.0
+
+# Local time display for backtest sheets (fixed offset, no DST)
+local_utc_offset_hours: -5
