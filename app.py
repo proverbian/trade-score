@@ -43,7 +43,9 @@ def _default_lookback_bars(interval: str) -> int:
     return max(2, int((24 * 60) / mins))
 
 def fetch_alpha(pair, interval_str, period="5d"):
-    symbol = f"{pair[:3]}{pair[3:]}=X"
+    p = str(pair).strip().upper()
+    symbol_overrides = config.get('yfinance_symbols', {}) or {}
+    symbol = symbol_overrides.get(p) or f"{p[:3]}{p[3:]}=X"
     interval = interval_str  # "5m" or "15m"
 
     ticker = yf.Ticker(symbol)
@@ -60,10 +62,13 @@ def run():
 
     # 1️⃣ Compute MarketMilk-style performance (pair % change) -> currency strength
     lookback_cfg = config.get('strength_lookback_bars', {})
+    exclude_from_strength = set(str(x).strip().upper() for x in (config.get('exclude_from_strength', []) or []) if x)
     for tf_key, interval in intervals.items():
         pair_scores = {}
         lookback = int(lookback_cfg.get(tf_key, _default_lookback_bars(interval)))
         for pair in pairs:
+            if str(pair).strip().upper() in exclude_from_strength:
+                continue
             df = fetch_alpha(pair, interval, period="5d")
             # score is pair performance over lookback window (percent)
             score = scoring.pair_performance_score(df, lookback_bars=lookback)
@@ -153,13 +158,21 @@ def run():
         res, sup = s_r.pick_zones(highs, lows)
 
         atr_h1 = (df_h1['High'] - df_h1['Low']).rolling(14).mean().iloc[-1]
-        price = float(close_h1.iloc[-1])
+        price_h1_close = float(close_h1.iloc[-1])
 
         pivots_h1 = s_r.find_pivots(close_h1, window=s_r_config['swing_window'])
         structure = s_r.infer_structure(pivots_h1)
 
         # Entry timeframe data
         df_m5 = fetch_alpha(pair, intervals['M5'], period="5d")
+        price_m5_close = None
+        try:
+            price_m5_close = float(df_m5['Close'].iloc[-1])
+        except Exception:
+            price_m5_close = None
+
+        # Use the most recent M5 close as "current" for display (still subject to yfinance delay).
+        price = price_m5_close if price_m5_close is not None else price_h1_close
 
         m5_last_time = None
         try:
@@ -214,6 +227,8 @@ def run():
         # Tight TP/SL
         s_r_info[pair] = {
             'current_price': price,
+            'current_price_h1_close': price_h1_close,
+            'current_price_m5_close': price_m5_close,
             'atr': atr_h1,
             'supports': sup,
             'resistances': res,
@@ -273,9 +288,15 @@ def run():
         recommendation=recommendation,
         account_balance_usd=account_balance_usd,
         dry_run=DRY_RUN,
+        local_utc_offset_hours=config.get('local_utc_offset_hours', None),
+        show_currency_strength=bool(config.get('show_currency_strength', False)),
+        show_neutral_pairs=bool(config.get('show_neutral_pairs', False)),
     )
     if DRY_RUN:
         print(msg)
+    else:
+        print("Sent scorecard to Telegram.")
+    return msg
 
 if __name__ == "__main__":
     run()

@@ -8,7 +8,20 @@ class TelegramPoster:
         self.token = token
         self.chat_id = chat_id
 
-    def post_scorecard(self, strength_per_tf: dict, pair_biases: dict, s_r_info: dict = None, pair_scores: dict = None, lot_size: float = 0.01, recommendation: dict | None = None, dry_run: bool = False, account_balance_usd: float | None = None) -> str:
+    def post_scorecard(
+        self,
+        strength_per_tf: dict,
+        pair_biases: dict,
+        s_r_info: dict = None,
+        pair_scores: dict = None,
+        lot_size: float = 0.01,
+        recommendation: dict | None = None,
+        dry_run: bool = False,
+        account_balance_usd: float | None = None,
+        local_utc_offset_hours: float | None = None,
+        show_currency_strength: bool = True,
+        show_neutral_pairs: bool = True,
+    ) -> str:
         """
         strength_per_tf: { 'D1': {cur:score,...}, 'H4': {...}, 'H1': {...} }
         pair_biases: { 'EURUSD': 'SELL', 'GBPUSD': 'BUY', ... }
@@ -17,6 +30,46 @@ class TelegramPoster:
         utc_now = datetime.now(timezone.utc)
         ny_tz = ZoneInfo("America/New_York")
         ny_now = utc_now.astimezone(ny_tz)
+
+        # Optional fixed-offset local time (for users comparing to chart time)
+        local_tz = None
+        local_tz_label = None
+        if local_utc_offset_hours is not None:
+            try:
+                off = float(local_utc_offset_hours)
+                local_tz = timezone(timedelta(hours=off))
+                local_tz_label = f"UTC{int(off):+d}" if float(off).is_integer() else f"UTC{off:+g}"
+            except Exception:
+                local_tz = None
+                local_tz_label = None
+
+        def _to_dt(x):
+            if x is None:
+                return None
+            try:
+                if hasattr(x, 'to_pydatetime'):
+                    x = x.to_pydatetime()
+            except Exception:
+                pass
+            if isinstance(x, datetime):
+                if x.tzinfo is None:
+                    return x.replace(tzinfo=timezone.utc)
+                return x
+            return None
+
+        def _fmt_dt_utc_and_local(x) -> str:
+            d = _to_dt(x)
+            if d is None:
+                return "N/A"
+            d_utc = d.astimezone(timezone.utc)
+            base = d_utc.strftime('%Y-%m-%d %H:%M') + ' UTC'
+            if local_tz is None:
+                return base
+            try:
+                d_loc = d_utc.astimezone(local_tz)
+                return base + f" ({d_loc.strftime('%Y-%m-%d %H:%M')} {local_tz_label})"
+            except Exception:
+                return base
 
         def _fmt_hm(dt: datetime) -> str:
             return dt.strftime('%H:%M')
@@ -91,6 +144,12 @@ class TelegramPoster:
             f"Market Status: {status}",
         ]
 
+        if local_tz is not None:
+            try:
+                lines.append(f"Local time: {utc_now.astimezone(local_tz).strftime('%Y-%m-%d %H:%M:%S')} {local_tz_label}")
+            except Exception:
+                pass
+
         if account_balance_usd is not None:
             try:
                 lines.append(f"Account Balance: ${float(account_balance_usd):.2f} USD")
@@ -103,23 +162,55 @@ class TelegramPoster:
         lines.append("Tokyo: 7:00 PM - 4:00 AM (NY)")
         lines.append("London: 3:00 AM - 12:00 PM (NY)")
         lines.append("New York: 8:00 AM - 4:00 PM (NY)")
-        # print per currency per timeframe using the provided timeframes
+        # print per currency per timeframe using the provided timeframes (optional)
         tf_keys = list(strength_per_tf.keys()) if strength_per_tf else []
 
         def pip_size(pair: str) -> float:
+            pair = str(pair)
+            # BTCUSD: use $1 moves as the reporting unit
+            if pair == 'BTCUSD':
+                return 1.0
+            # XAUUSD (gold) is typically quoted to 2 decimals.
+            # For reporting, treat 0.10 as "1 pip" (10 cents) to keep pip counts readable.
+            if pair == 'XAUUSD':
+                return 0.1
             # JPY pairs typically have 2 decimal places, others 4
             if pair[3:] == 'JPY' or pair.endswith('JPY'):
                 return 0.01
             return 0.0001
-        currencies = sorted({c for tf in strength_per_tf.values() for c in tf.keys()})
-        for cur in currencies:
-            row = f"{cur}: "
-            parts = []
-            for tf in tf_keys:
-                val = strength_per_tf.get(tf, {}).get(cur, 0)
-                parts.append(f"{tf}: {val:+d}")
-            row += " | ".join(parts)
-            lines.append(row)
+
+        def pip_label(pair: str) -> str:
+            pair = str(pair)
+            if pair == 'XAUUSD':
+                return 'points'
+            if pair == 'BTCUSD':
+                return 'USD'
+            return 'pips'
+
+        def fmt_price(pair: str, px: float | None) -> str:
+            if px is None:
+                return 'N/A'
+            try:
+                pair = str(pair)
+                if pair == 'BTCUSD':
+                    return f"{float(px):.2f}"
+                if pair == 'XAUUSD':
+                    return f"{float(px):.2f}"
+                if pair.endswith('JPY'):
+                    return f"{float(px):.3f}"
+                return f"{float(px):.5f}"
+            except Exception:
+                return str(px)
+        if show_currency_strength and strength_per_tf:
+            currencies = sorted({c for tf in strength_per_tf.values() for c in tf.keys()})
+            for cur in currencies:
+                row = f"{cur}: "
+                parts = []
+                for tf in tf_keys:
+                    val = strength_per_tf.get(tf, {}).get(cur, 0)
+                    parts.append(f"{tf}: {val:+d}")
+                row += " | ".join(parts)
+                lines.append(row)
 
         if recommendation:
             strongest = recommendation.get('strongest')
@@ -141,11 +232,13 @@ class TelegramPoster:
                     p = item.get('pair')
                     b = item.get('bias')
                     g = item.get('gap_score', 0.0)
-                    if p and b:
+                    if p and b and (show_neutral_pairs or str(b).upper() != 'NEUTRAL'):
                         lines.append(f"  {i}. {p}: {b} (gap {float(g):+.2f})")
 
         lines.append("\nPAIRS:")
         for p, b in pair_biases.items():
+            if (not show_neutral_pairs) and str(b).upper() == 'NEUTRAL':
+                continue
             score = None
             if pair_scores and p in pair_scores:
                 try:
@@ -160,6 +253,8 @@ class TelegramPoster:
                 sup = s_r_info[p].get('supports', [])
                 atr = s_r_info[p].get('atr', 0.001)
                 current_price = s_r_info[p].get('current_price', 0)
+                price_h1 = s_r_info[p].get('current_price_h1_close', None)
+                price_m5 = s_r_info[p].get('current_price_m5_close', None)
                 structure = s_r_info[p].get('structure', {}) or {}
                 entry_ideas = s_r_info[p].get('entry_ideas', []) or []
                 setup_tf = s_r_info[p].get('setup_tf')
@@ -167,10 +262,18 @@ class TelegramPoster:
                 setup_note = s_r_info[p].get('setup_note')
                 h1_last_time = s_r_info[p].get('h1_last_time')
                 m5_last_time = s_r_info[p].get('m5_last_time')
-                lines.append(f"Current Price: {current_price:.4f}")
+                lines.append(f"Current Price (latest close): {fmt_price(p, current_price)}")
+                if price_m5 is not None or price_h1 is not None:
+                    parts = []
+                    if price_m5 is not None:
+                        parts.append(f"M5 close {fmt_price(p, price_m5)}")
+                    if price_h1 is not None:
+                        parts.append(f"H1 close {fmt_price(p, price_h1)}")
+                    if parts:
+                        lines.append("Price refs: " + " | ".join(parts))
                 if h1_last_time or m5_last_time:
-                    h1_s = str(h1_last_time) if h1_last_time is not None else "N/A"
-                    m5_s = str(m5_last_time) if m5_last_time is not None else "N/A"
+                    h1_s = _fmt_dt_utc_and_local(h1_last_time) if h1_last_time is not None else "N/A"
+                    m5_s = _fmt_dt_utc_and_local(m5_last_time) if m5_last_time is not None else "N/A"
                     lines.append(f"Last candles: H1 {h1_s} | M5 {m5_s}")
 
                 # Market structure summary
@@ -195,35 +298,61 @@ class TelegramPoster:
                     order_at = tp = sl = None
                 # show order/TP/SL with pip distances relative to current price
                 psize = pip_size(p)
+                plabel = pip_label(p)
                 if order_at:
                     try:
                         order_pips = abs(order_at - current_price) / psize if current_price else None
                     except Exception:
                         order_pips = None
-                    lines.append(f"ORDER AT: {order_at:.4f} ({order_pips:.1f} pips)" if order_pips is not None else f"ORDER AT: {order_at:.4f}")
+                    lines.append(
+                        f"ORDER AT: {fmt_price(p, order_at)} ({order_pips:.1f} {plabel})"
+                        if order_pips is not None
+                        else f"ORDER AT: {fmt_price(p, order_at)}"
+                    )
                 else:
                     lines.append("ORDER AT: N/A")
 
                 if tp:
                     try:
-                        tp_pips = abs(tp - current_price) / psize if current_price else None
+                        base_px = order_at if order_at else current_price
+                        tp_pips = abs(tp - base_px) / psize if base_px else None
                     except Exception:
                         tp_pips = None
-                    lines.append(f"TP: {tp:.4f} ({tp_pips:.1f} pips)" if tp_pips is not None else f"TP: {tp:.4f}")
+                    lines.append(
+                        f"TP: {fmt_price(p, tp)} ({tp_pips:.1f} {plabel})"
+                        if tp_pips is not None
+                        else f"TP: {fmt_price(p, tp)}"
+                    )
                 else:
                     lines.append("TP: N/A")
 
                 if sl:
                     try:
-                        sl_pips = abs(sl - current_price) / psize if current_price else None
+                        base_px = order_at if order_at else current_price
+                        sl_pips = abs(sl - base_px) / psize if base_px else None
                     except Exception:
                         sl_pips = None
-                    lines.append(f"SL: {sl:.4f} ({sl_pips:.1f} pips)" if sl_pips is not None else f"SL: {sl:.4f}")
+                    lines.append(
+                        f"SL: {fmt_price(p, sl)} ({sl_pips:.1f} {plabel})"
+                        if sl_pips is not None
+                        else f"SL: {fmt_price(p, sl)}"
+                    )
                 else:
                     lines.append("SL: N/A")
+
+                # RR summary when we have an entry + TP + SL
+                if order_at and tp and sl:
+                    try:
+                        risk = abs(order_at - sl)
+                        reward = abs(tp - order_at)
+                        if risk and risk > 0 and reward is not None:
+                            rr = reward / risk
+                            lines.append(f"RR (from entry): 1:{rr:.2f}")
+                    except Exception:
+                        pass
                 lines.append("SUPPORT/RESIST:")
-                lines.append(f"  R: {', '.join(f'{r:.4f}' for r in res)}")
-                lines.append(f"  S: {', '.join(f'{s:.4f}' for s in sup)}")
+                lines.append(f"  R: {', '.join(fmt_price(p, r) for r in res)}")
+                lines.append(f"  S: {', '.join(fmt_price(p, s) for s in sup)}")
 
                 if entry_ideas:
                     if setup_tf and entry_tf:
@@ -262,5 +391,40 @@ class TelegramPoster:
             return msg
 
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        requests.post(url, data={"chat_id": self.chat_id, "text": msg})
+
+        def _post_text(text: str):
+            resp = requests.post(url, data={"chat_id": self.chat_id, "text": text}, timeout=30)
+            if not resp.ok:
+                snippet = (resp.text or "").strip().replace("\n", " ")[:300]
+                raise RuntimeError(f"Telegram send failed: HTTP {resp.status_code} | {snippet}")
+
+        # Telegram hard limit is 4096 chars; keep a safety margin.
+        max_len = 3800
+        if len(msg) <= max_len:
+            _post_text(msg)
+            return msg
+
+        # Split by lines to preserve readability.
+        lines_with_nl = msg.splitlines(True)
+        chunks: list[str] = []
+        cur = ""
+        for ln in lines_with_nl:
+            if len(cur) + len(ln) > max_len:
+                if cur:
+                    chunks.append(cur)
+                    cur = ""
+                if len(ln) > max_len:
+                    for i in range(0, len(ln), max_len):
+                        chunks.append(ln[i:i + max_len])
+                else:
+                    cur = ln
+            else:
+                cur += ln
+        if cur:
+            chunks.append(cur)
+
+        total = len(chunks)
+        for i, ch in enumerate(chunks, start=1):
+            prefix = f"(part {i}/{total})\n" if total > 1 else ""
+            _post_text(prefix + ch)
         return msg

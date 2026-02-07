@@ -9,8 +9,13 @@ from datetime import timedelta, timezone
 from app import s_r, scoring
 
 
+# Optional yfinance symbol overrides (populated in main() from config)
+YF_SYMBOL_OVERRIDES: dict[str, str] = {}
+
+
 def fetch_fx(pair: str, interval: str, period: str) -> pd.DataFrame:
-    symbol = f"{pair[:3]}{pair[3:]}=X"
+    p = str(pair).strip().upper()
+    symbol = (YF_SYMBOL_OVERRIDES.get(p) or f"{p[:3]}{p[3:]}=X")
     ticker = yf.Ticker(symbol)
     df = ticker.history(period=period, interval=interval)
     if df is None or df.empty:
@@ -63,12 +68,14 @@ def strength_snapshot(
     lookback_m15: int,
     lookback_m5: int,
     weights: dict,
+    strength_pairs: list[str] | None = None,
 ):
     """Compute normalized currency strength per TF and weighted pair gap scores at time t."""
     # pair performance per timeframe
+    spairs = strength_pairs if strength_pairs is not None else pairs
     pair_scores_m15 = {}
     pair_scores_m5 = {}
-    for p in pairs:
+    for p in spairs:
         pair_scores_m15[p] = pair_perf_at_time(df_m15_by_pair.get(p), t, lookback_m15)
         pair_scores_m5[p] = pair_perf_at_time(df_m5_by_pair.get(p), t, lookback_m5)
 
@@ -261,6 +268,7 @@ def backtest_pair(
     weights: dict | None = None,
     test_start_time=None,
     exact_level: bool = True,
+    exclude_from_strength: list[str] | None = None,
 ):
     """Backtest H1 breakout + M5 retest for the last `days`.
 
@@ -283,6 +291,12 @@ def backtest_pair(
     trades = []
 
     def pip_size(p: str) -> float:
+        p = str(p)
+        if p == 'BTCUSD':
+            # Use $1 moves as the reporting unit ("point")
+            return 1.0
+        if p == 'XAUUSD':
+            return 0.1
         return 0.01 if p.endswith('JPY') else 0.0001
 
     last_trade_exit_time = None
@@ -337,6 +351,8 @@ def backtest_pair(
         if apply_bias_filter:
             if not pairs_for_strength or df_m15_by_pair is None or df_m5_by_pair is None:
                 return {'pair': pair, 'trades': [], 'note': 'Missing strength data for bias filter'}
+            ex = set(str(x).strip().upper() for x in (exclude_from_strength or []) if x)
+            strength_pairs = [pp for pp in (pairs_for_strength or []) if str(pp).strip().upper() not in ex]
             snap = strength_snapshot(
                 t=breakout_time,
                 pairs=pairs_for_strength,
@@ -345,6 +361,7 @@ def backtest_pair(
                 lookback_m15=lookback_m15,
                 lookback_m5=lookback_m5,
                 weights=weights or {'M15': 0.7, 'M5': 0.3},
+                strength_pairs=strength_pairs,
             )
             g = float(snap['gap'].get(pair, 0.0))
             bias = 'NEUTRAL'
@@ -537,8 +554,10 @@ def summarize(results: list[dict]):
 def main():
     parser = argparse.ArgumentParser(description='Backtest and/or list weekly trades for the H1 breakout + M5 retest strategy.')
     parser.add_argument('--days', default='7d', help='History window to test/list (default: 7d).')
+    parser.add_argument('--pairs', default=None, help='Comma-separated instruments to run (e.g., EURUSD,GBPUSD,BTCUSD). Defaults to config pairs.')
     parser.add_argument('--list', action='store_true', help='Print a detailed per-trade list for manual chart checking.')
     parser.add_argument('--suite', choices=['pattern', 'filtered', 'both'], default='filtered', help='Which suite to list when --list is set (default: filtered).')
+    parser.add_argument('--summary-suite', choices=['pattern', 'filtered', 'both'], default='both', help='Which suite(s) to run in summary mode (default: both).')
     parser.add_argument('--csv', default='weekly_trades.csv', help='CSV output path when --list is set (default: weekly_trades.csv).')
     parser.add_argument('--rr', type=float, default=3.0, help='Reward:risk ratio used for TP display (default: 3.0).')
     parser.add_argument('--lot', type=float, default=0.01, help='Lot size for informational risk/profit display (default: 0.01).')
@@ -551,7 +570,24 @@ def main():
     with open('app/config.yaml') as f:
         config = yaml.safe_load(f)
 
+    # Apply optional yfinance symbol overrides (e.g., XAUUSD -> GC=F)
+    try:
+        overrides = config.get('yfinance_symbols', {}) or {}
+        if isinstance(overrides, dict):
+            for k, v in overrides.items():
+                if k and v:
+                    YF_SYMBOL_OVERRIDES[str(k).strip().upper()] = str(v).strip()
+    except Exception:
+        pass
+
     pairs = config.get('pairs', [])
+    if args.pairs:
+        try:
+            requested = [p.strip().upper() for p in str(args.pairs).split(',') if p.strip()]
+            if requested:
+                pairs = requested
+        except Exception:
+            pass
     weights = config.get('weights', {'M15': 0.7, 'M5': 0.3})
     gap_threshold = float(config.get('gap_threshold', 2.0))
     account_balance_usd = config.get('account_balance_usd', None)
@@ -609,6 +645,7 @@ def main():
                 lookback_m15=lookback_m15,
                 lookback_m5=lookback_m5,
                 weights=weights,
+                exclude_from_strength=(config.get('exclude_from_strength', []) or []),
             )
             results.append(r)
             trades = r['trades']
@@ -788,11 +825,22 @@ def main():
         }
 
     def _pip_size(pair: str) -> float:
-        return 0.01 if str(pair).endswith('JPY') else 0.0001
+        pair = str(pair)
+        if pair == 'BTCUSD':
+            return 1.0
+        # Gold spot is typically quoted to 2 decimals; treat 0.10 as "1 pip" (10 cents)
+        # so the pip counts are not enormous. This is a convention for reporting only.
+        if pair == 'XAUUSD':
+            return 0.1
+        return 0.01 if pair.endswith('JPY') else 0.0001
 
     def _units_from_lot(lot: float) -> float:
         # FX convention: 1.0 lot = 100,000 units
+        # XAUUSD common convention: 1.0 lot = 100 troy oz
         try:
+            if float(lot) <= 0:
+                return 0.0
+            # pair is not available here; used for FX only.
             return float(lot) * 100_000.0
         except Exception:
             return 0.0
@@ -806,7 +854,15 @@ def main():
             pair = str(pair)
             base, quote = pair[:3], pair[3:]
             psize = _pip_size(pair)
-            units = _units_from_lot(lot)
+            # Estimate contract sizing
+            if pair == 'XAUUSD':
+                # 1.0 lot ~= 100 oz
+                units = float(lot) * 100.0
+            elif pair == 'BTCUSD':
+                # Treat "lot" as BTC quantity for crypto: 1.0 lot = 1 BTC
+                units = float(lot)
+            else:
+                units = _units_from_lot(lot)
             pip_value_in_quote = units * psize
             if quote == 'USD':
                 return float(pip_value_in_quote)
@@ -826,9 +882,14 @@ def main():
             return 'N/A'
 
     def _fmt_price(pair: str, px: float) -> str:
-        # keep JPY pairs to 3 decimals, others 5 for readability
+        # keep JPY pairs to 3 decimals, XAUUSD to 2, others 5 for readability
         try:
-            if str(pair).endswith('JPY'):
+            pair = str(pair)
+            if pair == 'BTCUSD':
+                return f"{float(px):.2f}"
+            if pair == 'XAUUSD':
+                return f"{float(px):.2f}"
+            if pair.endswith('JPY'):
                 return f"{float(px):.3f}"
             return f"{float(px):.5f}"
         except Exception:
@@ -973,8 +1034,10 @@ def main():
         return
 
     # Default mode: keep the existing summary output
-    run_suite(False)
-    run_suite(True)
+    if args.summary_suite in {'pattern', 'both'}:
+        run_suite(False)
+    if args.summary_suite in {'filtered', 'both'}:
+        run_suite(True)
 
 
 if __name__ == '__main__':

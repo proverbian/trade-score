@@ -7,6 +7,8 @@ pairs:
   - USDCAD
   - GBPJPY
   - EURAUD
+  - XAUUSD
+  - BTCUSD
 
 intervals:
   M15: "15m"
@@ -46,3 +48,19 @@ rr: 3.0
 
 # Local time display for backtest sheets (fixed offset, no DST)
 local_utc_offset_hours: -5
+
+# Optional: override Yahoo Finance tickers per "pair".
+# Yahoo does not reliably provide spot XAUUSD as XAUUSD=X; GC=F (Gold futures) is commonly available.
+yfinance_symbols:
+  XAUUSD: "GC=F"
+  BTCUSD: "BTC-USD"
+
+# Exclude non-FX instruments from currency strength aggregation.
+# They can still be traded; their bias will be derived from the currency side (e.g., USD strength).
+exclude_from_strength:
+  - XAUUSD
+  - BTCUSD
+
+# Telegram display options
+show_currency_strength: false   # hide the per-currency (AUD: M15..., etc) table
+show_neutral_pairs: false       # hide pairs whose bias is NEUTRAL
