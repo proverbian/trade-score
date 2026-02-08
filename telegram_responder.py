@@ -174,10 +174,26 @@ def _filter_scorecard_pairs(scorecard_text: str, allowed_pairs: set[str]) -> str
     return (prefix + "\n" + "\n".join(out)).strip()
 
 
-def _run_backtest_summary(pair: str, days: str) -> str:
+def _run_backtest_summary(pair: str, days: str, mode: str | None = None) -> str:
     """Run a concise backtest summary as a subprocess and return the text."""
     pair = pair.strip().upper()
     days = days.strip()
+
+    mode = (mode or '').strip().lower()
+    extra_args: list[str] = []
+    mode_label = 'STRICT'
+    if mode in {'active', 'loose', 'more'}:
+        # Higher-frequency tuning (less strict than the default "exact touch" rules)
+        mode_label = 'ACTIVE'
+        extra_args = [
+            '--no-exact-level',
+            '--tolerance-atr-mult', '0.25',
+            '--pivot-window', '1',
+            '--buffer-atr-mult', '0.05',
+            '--allow-overlap',
+            '--no-require-candle-color',
+        ]
+
     proc = subprocess.run(
         [
             sys_executable(),
@@ -188,6 +204,7 @@ def _run_backtest_summary(pair: str, days: str) -> str:
             days,
             "--summary-suite",
             "pattern",
+            *extra_args,
         ],
         capture_output=True,
         text=True,
@@ -201,9 +218,10 @@ def _run_backtest_summary(pair: str, days: str) -> str:
             msg += "\n" + err[:1200]
         return msg
 
-    # Return just the BTC line + summary block if we can.
+    # Return just the pair line + summary block if we can.
     lines = out.splitlines()
     keep: list[str] = []
+    keep.append(f"[Backtest mode: {mode_label}]  (pair={pair}, days={days})")
     for ln in lines:
         if ln.strip().startswith(pair + ":"):
             keep.append(ln)
@@ -213,7 +231,8 @@ def _run_backtest_summary(pair: str, days: str) -> str:
             idx = lines.index(ln)
             keep.extend(lines[idx + 1 : idx + 6])
             break
-    return "\n".join(keep) if keep else out
+    # If parsing fails, still include the mode label so it's obvious what ran.
+    return "\n".join(keep) if keep else (f"[Backtest mode: {mode_label}]\n" + out)
 
 
 def sys_executable() -> str:
@@ -226,7 +245,8 @@ HELP_TEXT = (
     "  /scorecard  - get the latest live scorecard\n"
     "  /scorecard btc  - show only BTCUSD\n"
     "  /scorecard BTCUSD  - show only BTCUSD\n"
-    "  /backtest BTCUSD 14d  - pattern-only backtest summary\n"
+    "  /backtest BTCUSD 14d  - strict (exact-touch) pattern backtest summary\n"
+    "  /backtest XAUUSD 14d active  - higher-frequency backtest tuning\n"
 )
 
 
@@ -307,12 +327,13 @@ def main() -> int:
                         sc = _filter_scorecard_pairs(sc, allowed_pairs=allowed)
                     tg_send(token, chat_id, sc)
                 elif text.startswith("/backtest"):
-                    # /backtest BTCUSD 14d
+                    # /backtest BTCUSD 14d [active]
                     m = re.split(r"\s+", text)
                     if len(m) >= 3:
                         pair = m[1]
                         days = m[2]
-                        bt = _run_backtest_summary(pair=pair, days=days)
+                        mode = m[3] if len(m) >= 4 else None
+                        bt = _run_backtest_summary(pair=pair, days=days, mode=mode)
                         tg_send(token, chat_id, bt)
                     else:
                         tg_send(token, chat_id, "Usage: /backtest BTCUSD 14d")

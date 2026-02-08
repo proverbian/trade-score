@@ -38,6 +38,27 @@ s_r:
   lookback_bars: 200
   swing_window: 2
 
+# Entry detection strictness
+# - strict: fewer, higher-selectivity setups
+# - active: more setups (looser confirmation)
+default_entry_mode: strict
+entry_mode_by_pair:
+  XAUUSD: active
+  BTCUSD: active
+
+# Override per-mode parameters used for H1 breakout + M5 retest detection
+entry_mode_params:
+  strict:
+    pivot_window: 2
+    buffer_atr_mult: 0.10
+    retest_atr_mult: 0.15
+    require_candle_color: true
+  active:
+    pivot_window: 1
+    buffer_atr_mult: 0.05
+    retest_atr_mult: 0.25
+    require_candle_color: false
+
 lot_size: 0.01  # Default micro lot; adjust based on your account
 
 # Account / budget (used for informational risk display)

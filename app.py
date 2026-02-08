@@ -158,6 +158,23 @@ def compute_scorecard_data(cfg: dict) -> dict:
 
     special_entries = {"XAUUSD", "BTCUSD"}
     special_tp_mode = str(cfg.get('special_tp_mode', 'rr') or 'rr').strip().lower()
+
+    default_entry_mode = str(cfg.get('default_entry_mode', 'strict') or 'strict').strip().lower()
+    entry_mode_by_pair = cfg.get('entry_mode_by_pair', {}) or {}
+    entry_mode_params = cfg.get('entry_mode_params', {}) or {}
+
+    def _entry_params_for(pair: str) -> dict:
+        """Resolve per-pair entry detection params (mode -> params), with safe defaults."""
+        p = str(pair).strip().upper()
+        mode = str(entry_mode_by_pair.get(p, default_entry_mode) or default_entry_mode).strip().lower()
+        params = dict(entry_mode_params.get(mode, {}) or {})
+        # Fallback defaults if config is missing pieces
+        params.setdefault('pivot_window', int(s_r_config.get('swing_window', 2)))
+        params.setdefault('buffer_atr_mult', 0.10)
+        params.setdefault('retest_atr_mult', 0.15)
+        params.setdefault('require_candle_color', True)
+        params['_mode'] = mode
+        return params
     for pair in pairs:
         bias = pair_biases.get(pair, 'NEUTRAL')
 
@@ -176,7 +193,12 @@ def compute_scorecard_data(cfg: dict) -> dict:
         atr_h1 = (df_h1['High'] - df_h1['Low']).rolling(14).mean().iloc[-1]
         price_h1_close = float(close_h1.iloc[-1])
 
-        pivots_h1 = s_r.find_pivots(close_h1, window=s_r_config['swing_window'])
+        ep = _entry_params_for(pair)
+        pivot_window = int(ep.get('pivot_window', s_r_config.get('swing_window', 2)))
+        if pivot_window < 1:
+            pivot_window = 1
+
+        pivots_h1 = s_r.find_pivots(close_h1, window=pivot_window)
         structure = s_r.infer_structure(pivots_h1)
 
         # Entry timeframe data
@@ -208,7 +230,13 @@ def compute_scorecard_data(cfg: dict) -> dict:
                 bias_for_setup = 'SELL'
 
         if bias_for_setup in {'BUY', 'SELL'} and atr_h1 is not None and not pd.isna(atr_h1):
-            br = s_r.detect_breakout(df_h1, pivots_h1, float(atr_h1), direction=bias_for_setup)
+            br = s_r.detect_breakout(
+                df_h1,
+                pivots_h1,
+                float(atr_h1),
+                direction=bias_for_setup,
+                buffer_atr_mult=float(ep.get('buffer_atr_mult', 0.10)),
+            )
             if not br:
                 setup_note = "Waiting for H1 breakout close beyond last swing."
             else:
@@ -220,6 +248,8 @@ def compute_scorecard_data(cfg: dict) -> dict:
                     atr=float(atr_h1),
                     direction=bias_for_setup,
                     start_time=breakout_time,
+                    retest_atr_mult=float(ep.get('retest_atr_mult', 0.15)),
+                    require_candle_color=bool(ep.get('require_candle_color', True)),
                 )
                 if not ret:
                     setup_note = f"H1 breakout detected at {breakout_time}; waiting for M5 retest/confirmation near {level:.5f}."

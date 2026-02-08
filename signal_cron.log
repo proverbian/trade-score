@@ -1,0 +1,147 @@
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 205, in compute_scorecard_data
+    df_m5 = fetch_alpha(pair, intervals['M5'], period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Traceback (most recent call last):
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/shiloh/projects/scripts/wag/signal_scan.py", line 211, in main
+    data = wag_app_main.compute_scorecard_data(cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 92, in compute_scorecard_data
+    df = fetch_alpha(pair, interval, period="5d", cfg=cfg)
+  File "/Users/shiloh/projects/scripts/wag/app.py", line 65, in fetch_alpha
+    df = ticker.history(period=period, interval=interval)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/base.py", line 129, in history
+    return self._lazy_load_price_history().history(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/utils.py", line 95, in wrapper
+    result = func(*args, **kwargs)
+  File "/Users/shiloh/projects/scripts/wag/.venv/lib/python3.13/site-packages/yfinance/scrapers/history.py", line 224, in history
+    if data['chart']['result'] is None:
+       ~~~~^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable

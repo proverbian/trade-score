@@ -255,6 +255,8 @@ def backtest_pair(
     retest_atr_mult: float = 0.15,
     sl_atr_mult: float = 1.0,
     tp_atr_mult: float = 3.0,
+    allow_overlap: bool = False,
+    require_candle_color: bool = True,
     # optional bias filter (strength-gap replay)
     apply_bias_filter: bool = False,
     require_extremes: bool = False,
@@ -316,7 +318,7 @@ def backtest_pair(
             continue
 
         pv_time = df_h1.index[pv_i]
-        if last_trade_exit_time is not None and pv_time <= last_trade_exit_time:
+        if (not allow_overlap) and last_trade_exit_time is not None and pv_time <= last_trade_exit_time:
             continue
 
         a = float(atr.iloc[pv_i]) if not pd.isna(atr.iloc[pv_i]) else None
@@ -343,7 +345,7 @@ def backtest_pair(
         breakout_time = df_h1.index[breakout_i]
         if test_start_time is not None and breakout_time < test_start_time:
             continue
-        if last_trade_exit_time is not None and breakout_time <= last_trade_exit_time:
+        if (not allow_overlap) and last_trade_exit_time is not None and breakout_time <= last_trade_exit_time:
             continue
 
         # Optional: apply strength-gap bias filter at breakout time
@@ -409,6 +411,7 @@ def backtest_pair(
             direction=direction,
             start_time=breakout_time,
             retest_atr_mult=use_retest_mult,
+            require_candle_color=bool(require_candle_color),
         )
         if not ret:
             continue
@@ -517,7 +520,8 @@ def backtest_pair(
             },
         })
 
-        last_trade_exit_time = exit_time
+        if not allow_overlap:
+            last_trade_exit_time = exit_time
 
     return {'pair': pair, 'trades': trades, 'note': None}
 
@@ -565,6 +569,11 @@ def main():
     parser.add_argument('--exact-level', action='store_true', default=True, help='Require exact touch of the level on retest (default: on).')
     parser.add_argument('--no-exact-level', action='store_false', dest='exact_level', help='Allow tolerance band around the level (less strict).')
     parser.add_argument('--tolerance-atr-mult', type=float, default=0.15, help='Retest tolerance as ATR multiple when --no-exact-level is used (default: 0.15).')
+    parser.add_argument('--pivot-window', type=int, default=2, help='Pivot window for H1 swing detection (default: 2). Smaller => more pivots/trades.')
+    parser.add_argument('--buffer-atr-mult', type=float, default=0.10, help='Breakout buffer as ATR multiple (default: 0.10). Smaller => more breakouts.')
+    parser.add_argument('--allow-overlap', action='store_true', help='Allow overlapping trades (do not block new entries until prior exit).')
+    parser.add_argument('--no-require-candle-color', action='store_false', dest='require_candle_color', help='Do not require bullish/bearish retest candle color (more trades, less strict).')
+    parser.set_defaults(require_candle_color=True)
     args = parser.parse_args()
 
     with open('app/config.yaml') as f:
@@ -631,10 +640,14 @@ def main():
             r = backtest_pair(
                 p,
                 days=args.days,
+                pivot_window=int(args.pivot_window),
+                buffer_atr_mult=float(args.buffer_atr_mult),
                 sl_atr_mult=1.0,
                 tp_atr_mult=float(args.rr),
                 retest_atr_mult=float(args.tolerance_atr_mult),
                 exact_level=bool(args.exact_level),
+                allow_overlap=bool(args.allow_overlap),
+                require_candle_color=bool(args.require_candle_color),
                 apply_bias_filter=apply_bias_filter,
                 require_extremes=bool(config.get('extremes_filter', False)),
                 extremes_top_n=int(config.get('extremes_top_n', 1)),
